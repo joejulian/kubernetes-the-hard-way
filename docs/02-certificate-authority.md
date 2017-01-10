@@ -137,9 +137,17 @@ KUBERNETES_PUBLIC_ADDRESS=$(aws elb describe-load-balancers \
   jq -r '.LoadBalancerDescriptions[].DNSName')
 ```
 
+#### JPC
+
+JPC requires the full list of addresses because they're dynamically allocated
+```
+IPS=$(triton instance ls -o ips | grep -v IPS | tr '\n' ',' | tr -d '[]')
+```
 ---
 
 Create the `kubernetes-csr.json` file:
+
+#### GCE and AWS
 
 ```
 cat > kubernetes-csr.json <<EOF
@@ -149,16 +157,13 @@ cat > kubernetes-csr.json <<EOF
     "worker0",
     "worker1",
     "worker2",
-    "ip-10-240-0-20",
-    "ip-10-240-0-21",
-    "ip-10-240-0-22",
+    "ip-10-240-0-10",
+    "ip-10-240-0-11",
+    "ip-10-240-0-12",
     "10.32.0.1",
     "10.240.0.10",
     "10.240.0.11",
     "10.240.0.12",
-    "10.240.0.20",
-    "10.240.0.21",
-    "10.240.0.22",
     "${KUBERNETES_PUBLIC_ADDRESS}",
     "127.0.0.1"
   ],
@@ -177,6 +182,36 @@ cat > kubernetes-csr.json <<EOF
   ]
 }
 EOF
+```
+
+#### JPC
+
+
+```
+cat > kubernetes-csr.json <<EOF
+{
+  "CN": "kubernetes",
+  "hosts": [
+    "kubernetes",
+    ${IPS}
+    "127.0.0.1"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "US",
+      "L": "Portland",
+      "O": "Kubernetes",
+      "OU": "Cluster",
+      "ST": "Oregon"
+    }
+  ]
+}
+EOF
+
 ```
 
 Generate the Kubernetes certificate and private key:
@@ -237,5 +272,21 @@ for host in ${KUBERNETES_HOSTS[*]}; do
     jq -r '.Reservations[].Instances[].PublicIpAddress')
   scp ca.pem kubernetes-key.pem kubernetes.pem \
     ubuntu@${PUBLIC_IP_ADDRESS}:~/
+done
+```
+
+### JPC
+The following command will:
+
+* Copy the TLS certificates and keys to each Kubernetes host using ssh+tar
+```
+BASTION=$(triton ip kubernetes)
+tar cf - ca.pem kubernetes-key.pem kubernetes.pem | 
+  ssh $BASTION tar xf -
+for ip in $(echo $IPS | tr ',"' ' '); do
+  tar cf - ca.pem kubernetes-key.pem kubernetes.pem | 
+  ssh -o StrictHostKeyChecking=no \
+      -o proxycommand="ssh root@$BASTION -W %h:%p" 
+      root@$ip tar xf -
 done
 ```

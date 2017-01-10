@@ -101,13 +101,13 @@ sudo tar -xvf cni-07a8a28637e97b22eb8dfe710eeae1344f69d16e.tar.gz -C /opt/cni
 Download and install the Kubernetes worker binaries:
 
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubectl
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kubectl
 ```
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kube-proxy
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kube-proxy
 ```
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubelet
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kubelet
 ```
 
 ```
@@ -122,13 +122,30 @@ sudo mv kubectl kube-proxy kubelet /usr/bin/
 sudo mkdir -p /var/lib/kubelet/
 ```
 
+Configure kubelet:
+
+### AWS and GCE
+
+```
+CONTROLLER0=https://10.240.0.10:6443
+API_SERVERS=https://10.240.0.10:6443,https://10.240.0.11:6443,https://10.240.0.12:6443
+```
+
+### JPC
+
+```
+CONTROLLER0=$(triton instance ls -o name,ips | awk '/controller0/{gsub(/[^0-9.]/,"",$2);print "https://" $2 ":6443"}')
+API_SERVERS=$(triton instance ls -o name,ips | awk '/controller/{gsub(/[^0-9.]/,"",$2);print "https://" $2":6443"}' | tr '\n' ',')
+```
+
+
 ```
 sudo sh -c 'echo "apiVersion: v1
 kind: Config
 clusters:
 - cluster:
     certificate-authority: /var/lib/kubernetes/ca.pem
-    server: https://10.240.0.10:6443
+    server: ${CONTROLLER0}
   name: kubernetes
 contexts:
 - context:
@@ -144,6 +161,8 @@ users:
 
 Create the kubelet systemd unit file:
 
+### AWS and GCE
+
 ```
 sudo sh -c 'echo "[Unit]
 Description=Kubernetes Kubelet
@@ -154,16 +173,52 @@ Requires=docker.service
 [Service]
 ExecStart=/usr/bin/kubelet \
   --allow-privileged=true \
-  --api-servers=https://10.240.0.10:6443,https://10.240.0.11:6443,https://10.240.0.12:6443 \
+  --api-servers=${API_SERVERS} \
   --cloud-provider= \
   --cluster-dns=10.32.0.10 \
   --cluster-domain=cluster.local \
-  --configure-cbr0=true \
   --container-runtime=docker \
   --docker=unix:///var/run/docker.sock \
   --network-plugin=kubenet \
   --kubeconfig=/var/lib/kubelet/kubeconfig \
   --reconcile-cidr=true \
+  --serialize-image-pulls=false \
+  --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
+  --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
+  --v=2
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/kubelet.service'
+```
+
+### JPC
+
+
+```
+triton env > /etc/dockerenv.conf
+```
+
+```
+sudo sh -c 'echo "[Unit]
+Description=Kubernetes Kubelet
+Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=docker.service
+Requires=docker.service
+
+[Service]
+EnvironmentFile=/etc/dockerenv.conf
+ExecStart=/usr/bin/kubelet \
+  --allow-privileged=true \
+  --api-servers=${API_SERVERS} \
+  --cloud-provider= \
+  --cluster-dns=10.32.0.10 \
+  --cluster-domain=cluster.local \
+  --container-runtime=docker \
+  --network-plugin=kubenet \
+  --kubeconfig=/var/lib/kubelet/kubeconfig \
   --serialize-image-pulls=false \
   --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
   --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
@@ -197,7 +252,7 @@ Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
 [Service]
 ExecStart=/usr/bin/kube-proxy \
-  --master=https://10.240.0.10:6443 \
+  --master=${CONTROLLER0} \
   --kubeconfig=/var/lib/kubelet/kubeconfig \
   --proxy-mode=iptables \
   --v=2
@@ -219,4 +274,4 @@ sudo systemctl start kube-proxy
 sudo systemctl status kube-proxy --no-pager
 ```
 
-> Remember to run these steps on `worker0`, `worker1`, and `worker2`
+> Remember to run these steps on all workers.

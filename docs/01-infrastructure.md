@@ -6,3 +6,4 @@ This lab will walk you through provisioning the compute instances required for r
 
 * [Cloud Infrastructure Provisioning - Google Cloud Platform](01-infrastructure-gcp.md)
 * [Cloud Infrastructure Provisioning - Amazon Web Services](01-infrastructure-aws.md)
+* [Cloud Infrastructure Provisioning - Joyent Triton](01-infrastructure-triton.md)

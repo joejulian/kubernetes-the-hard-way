@@ -46,16 +46,16 @@ sudo cp ca.pem kubernetes-key.pem kubernetes.pem /var/lib/kubernetes/
 Download the official Kubernetes release binaries:
 
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kube-apiserver
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kube-apiserver
 ```
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kube-controller-manager
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kube-controller-manager
 ```
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kube-scheduler
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kube-scheduler
 ```
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubectl
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kubectl
 ```
 
 Install the Kubernetes binaries:
@@ -130,28 +130,35 @@ Capture the internal IP address:
 ```
 INTERNAL_IP=$(curl -s -H "Metadata-Flavor: Google" \
   http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)
+ETCD_SERVERS=https://10.240.0.10:2379,https://10.240.0.11:2379,https://10.240.0.12:2379
 ```
 
 #### AWS
 
 ```
 INTERNAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+ETCD_SERVERS=https://10.240.0.10:2379,https://10.240.0.11:2379,https://10.240.0.12:2379
 ```
 
+#### JPC
+
+```
+INTERNAL_IP=$(ip addr show eth0 | awk '/inet /{gsub(/\/[0-9][0-9]/,"");print $2}')
+ETCD_SERVERS=$(triton instance ls -o name,ips | awk '/controller/{gsub(/[^0-9.]/,"",$2);print "https://" $2":2380"}' | tr '\n' ',')
+```
 ---
 
 Create the systemd unit file:
 
 ```
-cat > kube-apiserver.service <<"EOF"
-[Unit]
+echo "[Unit]
 Description=Kubernetes API Server
 Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
 [Service]
 ExecStart=/usr/bin/kube-apiserver \
   --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota \
-  --advertise-address=INTERNAL_IP \
+  --advertise-address=${INTERNAL_IP} \
   --allow-privileged=true \
   --apiserver-count=3 \
   --authorization-mode=ABAC \
@@ -161,7 +168,7 @@ ExecStart=/usr/bin/kube-apiserver \
   --etcd-cafile=/var/lib/kubernetes/ca.pem \
   --insecure-bind-address=0.0.0.0 \
   --kubelet-certificate-authority=/var/lib/kubernetes/ca.pem \
-  --etcd-servers=https://10.240.0.10:2379,https://10.240.0.11:2379,https://10.240.0.12:2379 \
+  --etcd-servers=${ETCD_SERVERS} \
   --service-account-key-file=/var/lib/kubernetes/kubernetes-key.pem \
   --service-cluster-ip-range=10.32.0.0/24 \
   --service-node-port-range=30000-32767 \
@@ -174,17 +181,12 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
-```
-
-```
-sed -i s/INTERNAL_IP/$INTERNAL_IP/g kube-apiserver.service
+" > kube-apiserver.service
 ```
 
 ```
 sudo mv kube-apiserver.service /etc/systemd/system/
 ```
-
 
 ```
 sudo systemctl daemon-reload
@@ -199,8 +201,7 @@ sudo systemctl status kube-apiserver --no-pager
 ### Kubernetes Controller Manager
 
 ```
-cat > kube-controller-manager.service <<"EOF"
-[Unit]
+echo "[Unit]
 Description=Kubernetes Controller Manager
 Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
@@ -210,7 +211,7 @@ ExecStart=/usr/bin/kube-controller-manager \
   --cluster-cidr=10.200.0.0/16 \
   --cluster-name=kubernetes \
   --leader-elect=true \
-  --master=http://INTERNAL_IP:8080 \
+  --master=http://$INTERNAL_IP:8080 \
   --root-ca-file=/var/lib/kubernetes/ca.pem \
   --service-account-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
   --service-cluster-ip-range=10.32.0.0/24 \
@@ -220,11 +221,7 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
-```
-
-```
-sed -i s/INTERNAL_IP/$INTERNAL_IP/g kube-controller-manager.service
+" > kube-controller-manager.service
 ```
 
 ```
@@ -244,27 +241,23 @@ sudo systemctl status kube-controller-manager --no-pager
 
 ### Kubernetes Scheduler
 
+
 ```
-cat > kube-scheduler.service <<"EOF"
-[Unit]
+echo "[Unit]
 Description=Kubernetes Scheduler
 Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
 [Service]
 ExecStart=/usr/bin/kube-scheduler \
   --leader-elect=true \
-  --master=http://INTERNAL_IP:8080 \
+  --master=http://$INTERNAL_IP:8080 \
   --v=2
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
-```
-
-```
-sed -i s/INTERNAL_IP/$INTERNAL_IP/g kube-scheduler.service
+" > kube-scheduler.service
 ```
 
 ```
@@ -340,3 +333,5 @@ aws elb register-instances-with-load-balancer \
   --load-balancer-name kubernetes \
   --instances ${CONTROLLER_0_INSTANCE_ID} ${CONTROLLER_1_INSTANCE_ID} ${CONTROLLER_2_INSTANCE_ID}
 ```
+
+TODO: Add haproxy for Joyent

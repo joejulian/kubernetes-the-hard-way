@@ -1,5 +1,7 @@
 # Managing the Container Network Routes
 
+> Note that JPC cannot do Layer 3 networking. Instead, use an [Overlay Network](docs/07-overlay_network.md)
+
 Now that each worker node is online we need to add routes to make sure that Pods running on different machines can talk to each other. In this lab we are not going to provision any overlay networks and instead rely on Layer 3 networking. That means we need to add routes to our router. In GCP each network has a router that can be configured. If this was an on-prem datacenter then ideally you would need to add the routes to your local router.
 
 ## Container Subnets

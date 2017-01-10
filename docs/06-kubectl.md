@@ -5,7 +5,7 @@
 ### OS X
 
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/darwin/amd64/kubectl
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/darwin/amd64/kubectl
 chmod +x kubectl
 sudo mv kubectl /usr/local/bin
 ```
@@ -13,7 +13,7 @@ sudo mv kubectl /usr/local/bin
 ### Linux
 
 ```
-wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubectl
+wget https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kubectl
 chmod +x kubectl
 sudo mv kubectl /usr/local/bin
 ```
@@ -36,6 +36,13 @@ KUBERNETES_PUBLIC_ADDRESS=$(aws elb describe-load-balancers \
   --load-balancer-name kubernetes | \
   jq -r '.LoadBalancerDescriptions[].DNSName')
 ```
+
+### Joyent
+
+> TODO: instructions based on an haproxy
+
+> For now, do this all from the bastion
+
 ---
 
 Recall the token we setup for the admin user:
